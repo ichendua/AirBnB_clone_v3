@@ -1,57 +1,52 @@
 #!/usr/bin/python3
 """
-    Flask route that returns json respone
+    This is the amenities page handler for Flask.
 """
 from api.v1.views import app_views
+from models import storage
 from flask import abort, jsonify, request
-from models import storage, CNC
-from flasgger.utils import swag_from
+
+from models.amenity import Amenity
 
 
-@app_views.route('/amenities/', methods=['GET', 'POST'])
-@swag_from('swagger_yaml/amenities_no_id.yml', methods=['GET', 'POST'])
-def amenities_no_id(amenity_id=None):
+@app_views.route('/amenities', methods=['GET', 'POST'])
+def amenities():
     """
-        amenities route that handles http requests no ID given
+        Flask route at /amenities.
     """
-    if request.method == 'GET':
-        all_amenities = storage.all('Amenity')
-        all_amenities = [obj.to_json() for obj in all_amenities.values()]
-        return jsonify(all_amenities)
-
     if request.method == 'POST':
-        req_json = request.get_json()
-        if req_json is None:
-            abort(400, 'Not a JSON')
-        if req_json.get('name') is None:
-            abort(400, 'Missing name')
-        Amenity = CNC.get('Amenity')
-        new_object = Amenity(**req_json)
-        new_object.save()
-        return jsonify(new_object.to_json()), 201
+        kwargs = request.get_json()
+        if not kwargs:
+            return {"error": "Not a JSON"}, 400
+        if "name" not in kwargs:
+            return {"error": "Missing name"}, 400
+        new_amnt = Amenity(**kwargs)
+        new_amnt.save()
+        return new_amnt.to_dict(), 201
+
+    elif request.method == 'GET':
+        return jsonify([a.to_dict() for a in storage.all("Amenity").values()])
 
 
-@app_views.route('/amenities/<amenity_id>', methods=['GET', 'DELETE', 'PUT'])
-@swag_from('swagger_yaml/amenities_id.yml', methods=['GET', 'DELETE', 'PUT'])
-def amenities_with_id(amenity_id=None):
+@app_views.route('/amenities/<id>', methods=['GET', 'DELETE', 'PUT'])
+def amenities_id(id):
     """
-        amenities route that handles http requests with ID given
+        Flask route at /amenities/<id>.
     """
-    amenity_obj = storage.get('Amenity', amenity_id)
-    if amenity_obj is None:
-        abort(404, 'Not found')
+    amnt = storage.get(Amenity, id)
+    if (amnt):
+        if request.method == 'DELETE':
+            amnt.delete()
+            storage.save()
+            return {}, 200
 
-    if request.method == 'GET':
-        return jsonify(amenity_obj.to_json())
-
-    if request.method == 'DELETE':
-        amenity_obj.delete()
-        del amenity_obj
-        return jsonify({}), 200
-
-    if request.method == 'PUT':
-        req_json = request.get_json()
-        if req_json is None:
-            abort(400, 'Not a JSON')
-        amenity_obj.bm_update(req_json)
-        return jsonify(amenity_obj.to_json()), 200
+        elif request.method == 'PUT':
+            kwargs = request.get_json()
+            if not kwargs:
+                return {"error": "Not a JSON"}, 400
+            for k, v in kwargs.items():
+                if k not in ["id", "created_at", "updated_at"]:
+                    setattr(amnt, k, v)
+            amnt.save()
+        return amnt.to_dict()
+    abort(404)
